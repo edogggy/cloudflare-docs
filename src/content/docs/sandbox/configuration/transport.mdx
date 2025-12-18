@@ -1,0 +1,142 @@
+---
+title: Transport configuration
+pcx_content_type: configuration
+sidebar:
+  order: 5
+---
+
+import { WranglerConfig } from "~/components";
+
+Configure how the Sandbox SDK communicates with containers. The SDK supports two transport protocols: HTTP and WebSocket.
+
+## Transport types
+
+### HTTP transport (default)
+
+The default transport uses standard HTTP requests for each SDK operation. Each method call (executing commands, reading files, managing processes) creates a separate HTTP request to the container.
+
+**Use HTTP when:**
+- Your application makes infrequent SDK calls
+- You are not constrained by subrequest limits
+- You prefer simpler debugging with standard HTTP requests
+
+### WebSocket transport
+
+The WebSocket transport multiplexes all SDK operations over a single persistent WebSocket connection to the container. Instead of creating individual HTTP requests, the SDK sends messages over the WebSocket connection and receives responses asynchronously.
+
+**Use WebSocket when:**
+- Your application is running inside Workers or Durable Objects with [subrequest limits](/workers/platform/limits/#subrequests)
+- You make many SDK calls in rapid succession
+- You want to reduce connection overhead for multiple operations
+
+## Configure transport
+
+Set the `SANDBOX_TRANSPORT` environment variable to choose the transport protocol.
+
+<WranglerConfig>
+```toml
+[vars]
+SANDBOX_TRANSPORT = "websocket"
+```
+</WranglerConfig>
+
+**Available values:**
+- `"http"` - Use HTTP transport (default)
+- `"websocket"` - Use WebSocket transport
+
+:::note[Read at startup]
+Transport configuration is read when your Worker starts and applies to all sandboxes created by that Worker instance. Changes require redeploying your Worker.
+:::
+
+## How WebSocket transport works
+
+When WebSocket transport is enabled:
+
+1. **Connection establishment** - The SDK establishes a WebSocket connection to the container when the first SDK method is called
+2. **Request multiplexing** - All subsequent SDK calls (commands, file operations, process management) are serialized as messages and sent over the WebSocket
+3. **Response handling** - Responses are received asynchronously over the same connection and matched to their requests
+4. **Connection reuse** - The WebSocket connection persists for the lifetime of the sandbox, eliminating connection overhead
+
+The transport layer is transparent to your application code - method calls and responses work identically with both transports.
+
+## Subrequest limits
+
+Workers and Durable Objects have limits on the number of [subrequests](/workers/platform/limits/#subrequests) they can make:
+
+- **Workers**: 1,000 subrequests per request (including both external and internal requests)
+- **Durable Objects**: 1,000 subrequests per Durable Object method call
+
+Each HTTP transport SDK call counts as a subrequest. If your application makes many SDK calls, you may hit these limits with HTTP transport.
+
+WebSocket transport uses a single WebSocket connection for all SDK calls, counting as one subrequest regardless of how many operations you perform.
+
+**Example comparison:**
+
+```typescript
+import { getSandbox } from '@cloudflare/sandbox';
+
+const sandbox = getSandbox(env.Sandbox, 'data-processor');
+
+// Create 10 files and execute a command
+for (let i = 0; i < 10; i++) {
+  await sandbox.writeFile(`/tmp/file${i}.txt`, `Data ${i}`);
+}
+await sandbox.exec('python process.py');
+```
+
+- **HTTP transport**: 11 subrequests (10 file writes + 1 command)
+- **WebSocket transport**: 1 subrequest (single WebSocket connection)
+
+## When to use WebSocket transport
+
+Use WebSocket transport when your application:
+
+- Makes more than ~50 SDK calls per Worker request
+- Runs batch operations with many file operations
+- Executes multiple commands in sequence
+- Approaches Worker or Durable Object subrequest limits
+- Needs predictable subrequest usage regardless of SDK call count
+
+Use HTTP transport when:
+
+- Your application makes fewer than 10 SDK calls per request
+- You prefer standard HTTP debugging tools
+- You are not constrained by subrequest limits
+- Simplicity is more important than connection efficiency
+
+## Transport selection best practices
+
+**Start with HTTP transport** for development and simple use cases. It works well for most applications and provides familiar HTTP debugging.
+
+**Switch to WebSocket transport** when you:
+- Hit subrequest limit errors in production
+- Profile your Worker and see high subrequest counts
+- Build batch processing or automation tools that make many SDK calls
+
+**Cannot mix transports** in a single Worker instance. All sandboxes created by a Worker use the same transport configured via `SANDBOX_TRANSPORT`.
+
+## Debugging WebSocket transport
+
+WebSocket transport maintains the same error handling and logging as HTTP transport. Enable debug logging to see transport-level operations:
+
+<WranglerConfig>
+```toml
+[vars]
+SANDBOX_TRANSPORT = "websocket"
+SANDBOX_LOG_LEVEL = "debug"
+SANDBOX_LOG_FORMAT = "pretty"
+```
+</WranglerConfig>
+
+Debug logs show:
+- WebSocket connection establishment
+- Request serialization and transmission
+- Response deserialization
+- Connection errors and retries
+
+## Related resources
+
+- [Sandbox options](/sandbox/configuration/sandbox-options/) - Configure sandbox behavior
+- [Environment variables](/sandbox/configuration/environment-variables/) - Pass configuration to sandboxes
+- [Workers limits](/workers/platform/limits/) - Understanding Workers platform limits
+- [Durable Objects limits](/durable-objects/platform/limits/) - Understanding Durable Objects limits

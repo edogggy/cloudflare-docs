@@ -241,57 +241,21 @@ await sandbox.exec("node app.js", {
 });
 ```
 
-## SDK configuration
+## SDK configuration variables
 
-### Transport mode
+Some environment variables configure the Sandbox SDK itself rather than being passed to sandboxes:
 
-**Environment variable**: `SANDBOX_TRANSPORT`
-**Values**: `http` (default), `websocket`
+- `SANDBOX_TRANSPORT` - Choose transport protocol (`http` or `websocket`). See [Transport configuration](/sandbox/configuration/transport/)
+- `SANDBOX_LOG_LEVEL` - Control SDK logging level. See [Sandbox options](/sandbox/configuration/sandbox-options/#logging)
+- `SANDBOX_LOG_FORMAT` - Control SDK log format. See [Sandbox options](/sandbox/configuration/sandbox-options/#logging)
+- `SANDBOX_INSTANCE_TIMEOUT_MS` - Override container provisioning timeout. See [Sandbox options](/sandbox/configuration/sandbox-options/#containertimeouts)
+- `SANDBOX_PORT_TIMEOUT_MS` - Override container startup timeout. See [Sandbox options](/sandbox/configuration/sandbox-options/#containertimeouts)
 
-Control how the SDK communicates with containers. By default, the SDK uses HTTP requests for each operation. Set to `websocket` to multiplex all SDK calls over a single persistent WebSocket connection.
-
-**Why use WebSocket transport:**
-
-- **Avoid sub-request limits** - Workers and Durable Objects have limits on concurrent sub-requests. WebSocket transport uses a single persistent connection instead of individual HTTP requests for each SDK operation.
-- **Better performance** - Reusing a single connection eliminates per-request connection overhead.
-- **Transparent** - No code changes needed, the SDK handles everything internally.
-
-<WranglerConfig>
-```jsonc
-{
-  "vars": {
-    "SANDBOX_TRANSPORT": "websocket"
-  }
-}
-```
-</WranglerConfig>
-
-```typescript
-// Your code stays the same
-const sandbox = getSandbox(env.Sandbox, "my-sandbox");
-await sandbox.exec("python script.py");
-await sandbox.writeFile("/app/data.txt", "content");
-// All operations use the WebSocket connection automatically
-```
-
-**When to use WebSocket transport:**
-
-- You are hitting sub-request limits in Workers or Durable Objects
-- You perform many SDK operations per request (file operations, commands, etc.)
-- You want to reduce connection overhead for improved performance
-
-**When to use HTTP transport (default):**
-
-- You perform only a few SDK operations per request
-- You do not experience sub-request limit issues
-- You prefer the simpler HTTP request model for debugging
-
-:::note[Transparent implementation]
-WebSocket transport requires no code changes. The SDK automatically establishes and manages the WebSocket connection when you set the environment variable. All SDK methods work identically regardless of transport mode.
-:::
+These variables affect SDK behavior and are read when your Worker starts.
 
 ## Related resources
 
+- [Transport configuration](/sandbox/configuration/transport/) - Choose HTTP or WebSocket transport
 - [Wrangler configuration](/sandbox/configuration/wrangler/) - Setting Worker-level environment
 - [Secrets](/workers/configuration/secrets/) - Managing sensitive data
 - [Sessions API](/sandbox/api/sessions/) - Session-level environment variables
